@@ -1,0 +1,6 @@
+[submodule "keras-resnet"]
+	path = keras-resnet
+	url = https://github.com/raghakot/keras-resnet
+[submodule "glicko2"]
+	path = glicko2
+	url = https://github.com/sublee/glicko2
