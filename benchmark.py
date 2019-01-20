@@ -1,16 +1,15 @@
-from learn import autoplay
-from players import Player
-
-import numpy as np
-np.random.seed(1)
+from sgf_converter import play_sgf
 
 import cProfile
+import os
 
-pr = cProfile.Profile()
-pr.enable()
+if __name__ == '__main__':
+    pr = cProfile.Profile()
+    pr.enable()
 
-for _ in range(100):
-    autoplay(pause=0)
+    for uid in os.listdir('sgfs'):
+        for fname in os.listdir('sgfs/%s' % uid):
+            play_sgf(open('sgfs/%s/%s' % (uid, fname), 'r').read())
 
-pr.disable()
-pr.print_stats(sort='cumtime')
+    pr.disable()
+    pr.print_stats(sort='time')
