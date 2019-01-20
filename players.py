@@ -50,49 +50,34 @@ class MonteCarlo(Player):
         p = go._turn
         def rollout_win(go, player=Player(), turns=5) -> bool:
             for _ in range(turns):
-                go_next = None
-                while not go_next:
-                    move = player.get_move(go)
-                    go_next = go.place(move)
+                if go._over: break
+                move = player.get_move(go)
+                go_next = go.place(move)
+                if go_next is None:
+                    go_next = go.place(Go.PASS)
                 go = go_next
             return go._score(p) - go._score(p*-1)
         return np.mean([rollout_win(go.place(move), turns=10) for _ in range(50)])
 
+from supervised_learn import single_go_to_x, augment_data
+
 class NeuralNetwork(Player):
-    def __init__(self, name, network, epsilon=0):
-        self.network = network
+    def __init__(self, name, model, epsilon=0):
+        self.model = model
         self.name = name
         self.n_jobs = 1
         self.epsilon = 0
     def eval_move(self, go, move) -> float:
-        go_next = go.place(move)
-        try:    board_prev  = go._prev._board.reshape(9,9)
-        except: board_prev  = np.zeros(shape=(9,9))
-        board               = go._board.reshape(9,9)
-        board_next          = go_next._board.reshape(9,9)
-        #print(board_prev.shape, board.shape, board_next.shape)
-        if go._turn == Go.WHITE:
-            board_prev  = board_prev * -1
-            board       = board * -1
-            board_next  = board_next * -1
-        board = np.stack([board_prev, board, board_next], axis=2)
-        #print(board.shape)
-        boards = []
-        for i in [0,1,2,3]:
-            rot_board = np.rot90(board, k=i, axes=(0,1))
-            boards += [
-                rot_board, 
-                np.flip(rot_board, axis=0),
-            ]
-        boards = np.stack(boards, axis=0)
-        win_probs = self.network.predict(boards)
-        win_prob = np.mean(win_probs[:,1])
-        return win_prob
+        is_black = go._turn == Go.BLACK
+        x = augment_data(single_go_to_x(go.place(move)))
+        if is_black:
+            return np.mean(self.model.predict(x))
+        else:
+            return 1-np.mean(self.model.predict(x))
     def get_move(self, go):
         moves = list(itertools.product(range(go._size), range(go._size))) + [Go.PASS]
-        if np.random.rand() < self.epsilon:                 # epsilon-greedy exploration
+        if np.random.rand() < self.epsilon: # epsilon-greedy exploration
             idx = np.random.choice(len(moves))
             return moves[idx]
         scores = self.eval_moves(go, moves)
-        #print(scores)
         return self.select_move(moves, scores)

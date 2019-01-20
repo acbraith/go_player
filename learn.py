@@ -45,11 +45,11 @@ from tqdm import tqdm
 HISTORY             = 3
 EPSILON             = .05
 MOVES_PER_GAME      = 100
-DATA_PER_GAME       = 8*MOVES_PER_GAME
-BATCH_GAMES         = 10
+BATCH_GAMES         = 20
 EVAL_GAMES          = 5
-REPLAY_BUFFER       = DATA_PER_GAME*500
-MINIBATCH_SIZE      = DATA_PER_GAME*BATCH_GAMES*5
+DATA_PER_GAME       = MOVES_PER_GAME*8
+REPLAY_BUFFER       = DATA_PER_GAME*1000
+MINIBATCH_SIZE      = DATA_PER_GAME*20
 
 if __name__ == '__main__':
     models = os.listdir('models')
@@ -89,8 +89,8 @@ if __name__ == '__main__':
         print("Rankings:")
         for p in sorted(playerbase.keys(), key=lambda p: playerbase[p].mu - 2.5*playerbase[p].phi, reverse=True):
             print('  - %7s (%4d = %4d ± %3d)' % (p.name, playerbase[p].mu - 2.5*playerbase[p].phi, playerbase[p].mu, playerbase[p].phi))
-        print("Komi         : %.1f" % (komi))
-        print("Replay Buffer: %d" % (len(xs)))
+        print("Komi         : %+.1f" % (komi))
+        print("Replay Buffer: %d/%d" % (len(xs), REPLAY_BUFFER))
         print("Best         : %s" % (best.name))
 
         # Play Games

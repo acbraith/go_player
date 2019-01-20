@@ -25,15 +25,16 @@ def winner(sgf: str) -> int:
 def play_sgf(sgf: str) -> Tuple[List[Go], int]:
     moves = sgf_to_moves(sgf)
     go = Go()
-    history = [go]
     for move in moves:
         go = go.place(move)
-        history += [go]
-    return (history, winner(sgf))
+    return (go, winner(sgf))
     
 if __name__ == '__main__':
     sgf = open('sgfs/594193/15594332.sgf', 'r').read()
-    history, winner = play_sgf(sgf)
-    for board in history:
+    go, winner = play_sgf(sgf)
+    history = [go]
+    while history[-1]._prev is not None: 
+        history += [history[-1]._prev]
+    for board in reversed(history):
         print(board)
     print(winner)

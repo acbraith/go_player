@@ -126,10 +126,16 @@ def save_user_sgfs(user_id: int) -> None:
     for game in user_games(user_id):
         if not os.path.exists('sgfs/%s' % user_id):
             os.makedirs('sgfs/%s' % user_id)
-        if game['width'] == game['height'] == 9 and game['white_lost'] != game['black_lost'] and game['outcome'] != 'Timeout' and game['handicap'] == 0:
+        if game['width'] == game['height'] == 9 and \
+            not game['annulled'] and \
+            game['outcome'] != '' and \
+            game['handicap'] == 0:
             sgf = game_sgf(game['id'])
             if sgf:
-                with codecs.open('sgfs/%s/%s.sgf' % (user_id, game['id']), 'w', 'utf-8') as f:
+                with codecs.open(
+                    'sgfs/%s/%s.sgf' % (user_id, game['id']), 
+                    'w', 'utf-8'
+                ) as f:
                     f.write(sgf)
 
 if __name__ == '__main__':

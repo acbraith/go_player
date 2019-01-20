@@ -17,7 +17,7 @@ class Go:
         self._turn      = Go.BLACK
         self._stones    = {Go.BLACK: 0, Go.WHITE: 0}
         self._komi      = komi
-        self._prev      = self
+        self._prev      = None
         self._last_move = None
         self._over      = False
 
@@ -33,13 +33,6 @@ class Go:
         if self._over:
             return 1 if self._score(1) > self._score(-1) else -1
         return None
-
-    def place_text(self, coord: str) -> Optional['Go']:
-        if coord == 'pass':
-            return self.place(Go.PASS)
-        x = ord(coord[0].upper()) - ord('A')
-        y = int(coord[1]) - 1
-        return self.place((x,y))
 
     def place(self, pos: Tuple[int, int]) -> Optional['Go']:
         after                   = self.copy() # handwritten copy function faster than deepcopy
@@ -129,13 +122,20 @@ class Go:
         return board
 
 def play():
+    def cmd_to_coords(cmd: str) -> Tuple[int, int]:
+        if cmd == 'pass':
+            return Go.PASS
+        x = ord(cmd[0].upper()) - ord('A')
+        y = int(cmd[1]) - 1
+        return (x,y)
+
     go = Go()
     print(go)
     while not go._over:
         cmd = input()
         if cmd == 'q':
             break
-        go = go.place_text(cmd)
+        go = go.place(cmd_to_coords(cmd))
         print(go)
 
 if __name__ == '__main__':
