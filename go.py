@@ -7,6 +7,7 @@ from typing import Union, List, Tuple, Set, Optional
 from copy import copy
 
 class Go:
+    _ns = {9:{}, 13:{}, 21:{}}
     WHITE = -1
     BLACK = +1
     PASS  = (-1,-1)
@@ -71,17 +72,15 @@ class Go:
                 pass
         after._turn             *= -1
         after._last_move        = pos
-        try:    self._prev._prev._prev = None
-        except: pass
         return after
 
     def _neighbors(self, pos: Tuple[int, int]) -> Set[Tuple[int, int]]:
-        n = set()
-        x,y = pos
-        for i,j in [(-1,0),(0,-1),(1,0),(0,1)]:
-            if 0 <= x+i < self._size and 0 <= y+j < self._size:
-                n.add((x+i,y+j))
-        return n
+        if pos not in Go._ns[self._size]:
+            x,y = pos
+            ns = {(x+1,y),(x-1,y),(x,y+1),(x,y-1)}
+            ns = {(x,y) for x,y in ns if 0<=x<self._size and 0<=y<self._size}
+            Go._ns[self._size][pos] = ns
+        return Go._ns[self._size][pos]
 
     def _group(self, pos: Tuple[int, int]) -> int:
         player = self._board[pos]
