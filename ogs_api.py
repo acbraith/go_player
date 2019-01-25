@@ -138,5 +138,43 @@ def save_user_sgfs(user_id: int) -> None:
                 ) as f:
                     f.write(sgf)
 
+def games():
+    url = 'http://online-go.com/v1/games/?format=json'
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.text
+    except requests.HTTPError as e:
+        status_code = e.response.status_code
+        if status_code == 429: # rate limit
+            time.sleep(1)
+            return games()
+        else:
+            return None
+
+def download_sgfs(end_game_id = 16287929, n = 10000, name = 'downloads', criteria = lambda sgf: True):
+    if not os.path.exists('sgfs/%s' % name):
+        os.makedirs('sgfs/%s' % name)
+    for game_id in tqdm(range(end_game_id-n, end_game_id+1), ncols=100):
+        if os.path.exists('sgfs/%s/%s.sgf' % (name, game_id)):
+            continue
+        try:
+            sgf = game_sgf(game_id)
+            if sgf and criteria(sgf):
+                with codecs.open(
+                    'sgfs/%s/%s.sgf' % (name, game_id), 
+                    'w', 'utf-8'
+                ) as f:
+                    f.write(sgf)
+                    #print(game_id)
+        except:
+            pass
+            #print(traceback.format_exc())
+
+from sgf_converter import size, w_rating, b_rating, winner
+from tqdm import tqdm
+import traceback
 if __name__ == '__main__':
-    save_user_sgfs(user_id = 594193) # abraith93
+    #download_sgfs(name='9x9', criteria=lambda sgf: size(sgf) == 9 and winner(sgf) is not None)
+    download_sgfs(n=100000)
+    #save_user_sgfs(user_id = 594193) # abraith93

@@ -10,13 +10,6 @@ import resnet
 
 def single_go_to_x(go):
     return go._board.reshape(1,9,9,1)
-def full_go_to_X(go):
-    if go._prev is not None:
-        return np.concatenate(
-            [full_go_to_X(go._prev), single_go_to_x(go)],
-            axis=0
-        )
-    return single_go_to_x(go)
     # try:
     #     return np.stack([
     #         go._board.reshape(1,9,9),
@@ -38,6 +31,13 @@ def full_go_to_X(go):
     #         np.zeros(shape=(1,9,9)),
     #     ], axis=3)
     # except: pass
+def full_go_to_x(go):
+    if go._prev is not None:
+        return np.concatenate(
+            [full_go_to_x(go._prev), single_go_to_x(go)],
+            axis=0
+        )
+    return single_go_to_x(go)
 def augment_data(x,y=None):
     x = np.concatenate([x, np.flip(x, axis=(1))], axis=0)
     x = np.concatenate([x, np.rot90(x, axes=(1,2))], axis=0)
@@ -48,25 +48,36 @@ def augment_data(x,y=None):
     return x
 
 if __name__ == '__main__':
-    games = []
-    for uid in os.listdir('sgfs'):
-        for fname in os.listdir('sgfs/%s' % uid):
-            games.append(
-                play_sgf(open('sgfs/%s/%s' % (uid, fname), 'r').read())
-            )
-    def game_to_xy(game):
-        x = full_go_to_X(game[0])
-        y = np.full(shape=(len(x),1), fill_value=1 if game[1] == Go.BLACK else 0)
-        return x,y
+    import codecs
+    from sgf_converter import size, winner
+    from tqdm import tqdm
 
+    print("Loading SGFs...")
+    sgfs            = [codecs.open('sgfs/downloads/%s' % game_id, 'r', 'utf-8').read() for game_id in os.listdir('sgfs/downloads/')]
+    finished_9x9    = lambda sgf: size(sgf) == '9' and winner(sgf)[0] in ['B', 'W']
+    sgfs            = [sgf for sgf in sgfs if finished_9x9(sgf)]
+
+    print("Playing games...")
+    games           = [play_sgf(sgf) for sgf in tqdm(sgfs, ncols=80)]
+
+    print("Generating data...")
+    def game_to_xy(game):
+        x = full_go_to_x(game[0])
+        y = np.full(
+            shape=(len(x),1), 
+            fill_value=1 if game[1][0] == 'B' else 0
+        )
+        return x,y
     x = np.zeros(shape=(0,9,9,1))
     y = np.zeros(shape=(0,1))
-    for game in games:
+    for game in tqdm(games, ncols=80):
         x_,y_ = game_to_xy(game)
         x = np.concatenate([x, x_], axis=0)
         y = np.concatenate([y, y_], axis=0)
     # Rotate and flip x,y
     x,y = augment_data(x,y)
+
+    print("Building model...")
     model = resnet.ResnetBuilder.build(
         input_shape=(1,9,9), 
         num_outputs=1, 
@@ -79,6 +90,7 @@ if __name__ == '__main__':
         loss='binary_crossentropy',
         metrics=['accuracy', 'mse', 'mae']
     )
+    print("Training model...")
     model.fit(x, y, epochs=1, batch_size=128, verbose=1)
 
     for go,res in games:
