@@ -13,12 +13,11 @@ from players import NeuralNetwork, Player, MaxScoreDiff, MaxMyScore, MinOpponent
 
 from glicko2 import Glicko2, WIN, DRAW, LOSS
 
-def autoplay(black=Player(), white=Player(), pause=0.1, **kwargs):
+def autoplay(black=Player(), white=Player(), pause=0, **kwargs):
     ps = {-1: white, 1: black}
     go = Go(**kwargs)
     if pause:
         print(go)
-    board_history = [go._board]
     for t in range(100):
         if go._over: break
         p = ps[go._turn]
@@ -28,7 +27,6 @@ def autoplay(black=Player(), white=Player(), pause=0.1, **kwargs):
             move = Go.PASS
             go_next = go.place(move)
         go = go_next
-        board_history += [go._board]
         if pause:
             print('%s : %s' % (p.name, move))
             print("Turn %d" % t)
@@ -36,8 +34,7 @@ def autoplay(black=Player(), white=Player(), pause=0.1, **kwargs):
             time.sleep(pause)
     if pause:
         print(go)
-    black_win = go._score(1) > go._score(-1)
-    return black_win, board_history
+    return go
 
 import os
 from tqdm import tqdm
