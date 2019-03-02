@@ -28,7 +28,7 @@ input and output a `Tuple[int,int]` move
     - [ ] Full AlphaZero : Self-Play / Train / Evaluate
         - https://medium.com/applied-data-science/alphago-zero-explained-in-one-diagram-365f5abf67e0
         - https://applied-data.science/static/main/res/alpha_go_zero_cheat_sheet.png
-- [ ] Play Online
+- [x] Play Online
     - https://online-go.com/api/
     - https://ogs.docs.apiary.io/
     - https://forums.online-go.com/t/ogs-api-notes/17136
@@ -39,12 +39,12 @@ input and output a `Tuple[int,int]` move
     - [x] Place a move in a game
     - [x] Load a game into Go object
     - [x] Plug in simple random agent
-    - [ ] Handle multiple games
+    - [x] Handle multiple games
         - [x] Play multiple games at once
-        - [ ] Pick up existing games on startup
-        - [ ] Pick up new games whilst running (bug?)
-    - [ ] Accept challenges from players (9x9 only)
-    - [ ] Search for game when no games going on?
+        - [x] Pick up existing games on startup
+        - [x] Pick up new games whilst running (bug?)
+    - [x] Search for game when no games going on
+    - [ ] Multiprocessing for multiple games
 - [ ] Optimisations
     - [x] Benchmark and optimise Go game
     - [ ] Train on AWS

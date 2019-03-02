@@ -76,11 +76,11 @@ class MCTS:
             prev_action = state.prev_action
             self.root   = self.root.children[prev_action]
             assert(self.root.state == state)
-            print("Updated root with %s visits" % self.root.num_visits)
+            # print("Updated root with %s visits" % self.root.num_visits)
         except (AttributeError, KeyError, AssertionError) as e:
-            print("Failed to update root: %s" % e)
-            print(type(e))
-            print()
+            # print("Failed to update root: %s" % e)
+            # print(type(e))
+            # print()
             # Create New Tree
             self.root = Node(state, None)
             value, action_probs = evaluate(self.root)
@@ -102,7 +102,7 @@ class MCTS:
 
         # Select Action
         action = max(self.root.children, key=lambda action: self.root.children[action].num_visits)
-        try:    self.root = self.root.children[action]; print("VALUE: %s" % (self.root.total_reward / self.root.num_visits))
+        try:    self.root = self.root.children[action]; #print("VALUE: %s" % (self.root.total_reward / self.root.num_visits))
         except: pass
         
         return action
