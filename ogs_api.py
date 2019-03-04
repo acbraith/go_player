@@ -10,6 +10,13 @@ import logging
 import traceback
 import yaml
 import uuid
+import threading
+
+from go import Go
+from players import Player, MCTS_Player, PolicyNetworkArgmax
+from model import Gen_Model
+
+import concurrent.futures as futures
 
 from logging.handlers import RotatingFileHandler
 
@@ -325,93 +332,87 @@ class OnlineGoAPI:
         res.raise_for_status()
         return res
 
-from go import Go
-from players import Player, MCTS_Player, PolicyNetworkArgmax
-from model import Gen_Model
+def run(game_id, ogs_api, player, logger):
+    def gamedata():
+        return ogs_api.gamedata[game_id]
+    def _game_over():
+        return gamedata()['phase'] == 'finished'
+    def _my_turn():
+        return gamedata()['phase'] == 'play' and \
+            gamedata()['clock']['current_player'] == ogs_api.config['user']['id']
+    def _time_left():
+        clock           = gamedata()['clock']
+        time_left       = clock['black_time'] if clock['black_player_id'] == ogs_api.config['user']['id'] else clock['white_time']
+        total_time      = time_left['thinking_time']
+        try: total_time += time_left['periods'] * time_left['period_time']
+        except: pass
+        if _my_turn():
+            time_elapsed = (time.time() - clock['last_move'] / 1000)
+            total_time  -= time_elapsed
+        return total_time
+    def _get_move_time():
+        move_time = np.clip(player.mcts.time_limit, 0.25, _time_left() - 1)
+        return move_time
+    def _get_go():
+        try:
+            go = Go(board_size=gamedata()['width'])
+            for x,y,_ in gamedata()['moves']:
+                go = go.place((x,y))
+            return go
+        except:
+            return Go()
+    def _get_move(go, move_time):
+        try:
+            player.mcts.time_limit = move_time
+            move = player.get_move(go)
+            player.mcts.time_limit = move_time
+        except:
+            logger.warning('%s : %s' % (game_id, traceback.format_exc()))
+            move = Go.PASS
+        return move
+    def _do_turn():
+        logger.info('%s : _do_turn' % game_id)
+        go   = _get_go()
+        mt   = _get_move_time()
+        move = _get_move(go, mt)
+        logger.info('%s : move %s' % (game_id, move))
+        ogs_api._game_move(game_id, move)
+        logger.info('%s : move submitted' % (game_id))
+    logger.info('%s : start' % (game_id))
+    while not _game_over():
+        logger.info('%s : sleep' % (game_id))
+        while not _my_turn() and not _game_over():
+            try:    player.mcts.run_simulation()
+            except: pass
+        logger.info('%s : wake' % (game_id))
+        if _game_over():
+            logger.info('%s : game over' % (game_id))
+            return
+        _do_turn()
+        time.sleep(0.5)
 
 if __name__ == '__main__':
-    logger = make_logger('debug')
+    logger  = make_logger('debug')
     model  = Gen_Model().load('Go', '0.1')
-    move_max_time = 20
-    move_min_time = 0.5
-    def make_player():
-        player  = Player()
-        player = MCTS_Player(model, time_limit=move_max_time)
-        return player
-    players = {}
-
-    config = yaml.load(open('config.yml', 'r'))
+    def new_player():
+        return MCTS_Player(model, time_limit=30)
+    # Initialise TF session
+    MCTS_Player(model, time_limit=1).get_move(Go())
+    max_concurrent_games = 2
+    run_threads = {}
+    config  = yaml.load(open('config.yml', 'r'))
     ogs_api = OnlineGoAPI(config['username'], config['password'])
     ogs_api.logon()
-
     time.sleep(1)
-
     while True:
-        time.sleep(0.5)
-        games = list(ogs_api.gamedata)
-        # Moves
-        def time_left(game_id):
-            clock = ogs_api.gamedata[game_id]['clock']
-            time_left = clock['black_time'] if clock['black_player_id'] == ogs_api.config['user']['id'] else clock['white_time']
-            total_time = time_left['thinking_time'] + time_left['periods'] * time_left['period_time']
-            if clock['current_player'] == ogs_api.config['user']['id']:
-                total_time = total_time - (time.time() - clock['last_move'] / 1000)
-            return total_time
-        play_games = [g for g in games if ogs_api.gamedata[g]['phase'] == 'play']
-        my_turn_games = [g for g in play_games if ogs_api.gamedata[g]['clock']['current_player'] == ogs_api.config['user']['id']]
-        if len(my_turn_games) == 0 or len(play_games) < 3:
-            if ogs_api.automatch is None:
-                logger.info("FIND AUTOMATCH")
-                ogs_api._find_automatch()
-                time.sleep(0.5)
-        if len(my_turn_games) > 0:
-            game_id = min(my_turn_games, key=lambda game_id: time_left(game_id))
-            logger.info("GAME ID %s" % game_id)
-            logger.info("  %.1fs remaining" % time_left(game_id))
-            logger.debug('games time remaining: %s' % [time_left(g) for g in play_games])
-            data = ogs_api.gamedata[game_id]
-            go = Go(board_size=data['width'])
-            moves = data['moves']
-            for x,y,_ in moves:
-                pos = (x,y)
-                go = go.place(pos)
-            if game_id not in players:
-                players[game_id] = make_player()
-            try:
-                # Move time management
-                def get_move_time(clock_left):
-                    clock_left = np.array(sorted(clock_left))
-                    move_times = np.clip(clock_left - 1, move_min_time, move_max_time)
-                    cum_move_times = np.cumsum(move_times)
-                    move_time = [
-                        np.clip(
-                            clock_left[0] - move_min_time,
-                            move_min_time, move_max_time,
-                        )
-                    ]
-                    try:
-                        idx_timeout = np.where(cum_move_times > clock_left)[0][0]
-                        move_time.append(np.clip(
-                            clock_left[idx_timeout] / (idx_timeout+1) - move_min_time,
-                            move_min_time, move_max_time,
-                        ))
-                    except:
-                        pass
-                    return min(move_time)
-                move_time = get_move_time([time_left(g) for g in play_games])
-                if move_time < move_max_time:
-                    logger.debug('reduce move time -> %s' % move_time)
-                    players[game_id].mcts.time_limit = move_time
-                move = players[game_id].get_move(go)
-                players[game_id].mcts.time_limit = move_max_time
-            except:
-                logger.error(traceback.format_exc())
-                move = Go.PASS
-            logger.info("MOVE:::%s" % str(move))
-            ogs_api._game_move(game_id, move)
-
-        # Stone Removal
-        stone_removals = [g for g in games if ogs_api.gamedata[g]['phase'] == 'stone removal']
-        # print("stone_removals: %s" % stone_removals)
-        # for game_id in stone_removals:
-        #     ogs_api._removed_stones_accept(game_id)
+        time.sleep(5)
+        play_games    = [g for g in ogs_api.gamedata if ogs_api.gamedata[g]['phase'] == 'play']
+        for game_id in play_games:
+            if game_id not in run_threads:
+                logger.info("start thread for %s" % game_id)
+                # run(game_id, ogs_api, new_player())
+                threading.Thread(target=run, args=(game_id, ogs_api, new_player(), logger)).start()
+                run_threads[game_id] = True
+        if ogs_api.automatch is None and len(play_games) < max_concurrent_games:
+            logger.info("FIND AUTOMATCH")
+            ogs_api._find_automatch()
