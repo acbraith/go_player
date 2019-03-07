@@ -5,3 +5,5 @@ sgfs/*
 log/*
 config.yml
 Proxy*
+data/*
+memory/*

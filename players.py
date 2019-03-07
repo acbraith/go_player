@@ -2,6 +2,7 @@ from joblib import Parallel, delayed
 import itertools
 import numpy as np
 import traceback
+import random
 
 from go import Go
 
@@ -149,15 +150,46 @@ class MCTS_Player:
     def __init__(self, model, time_limit=1):
         self.name = 'MCTS_Player'
         self.model = model
-        preprocess_input = lambda gostate: single_go_to_x(gostate.go)
-        value_fn  = lambda gostate: self.model.predict(preprocess_input(gostate))[0][0]
-        policy_fn = lambda gostate: self.model.predict(preprocess_input(gostate))[1][0]
+        translations = [
+            lambda x: x,
+            lambda x: np.rot90(x, k=1, axes=(1,2)),
+            lambda x: np.rot90(x, k=2, axes=(1,2)),
+            lambda x: np.rot90(x, k=3, axes=(1,2)),
+            lambda x: np.flip(x, axis=1),
+            lambda x: np.rot90(np.flip(x, axis=1), k=1, axes=(1,2)),
+            lambda x: np.rot90(np.flip(x, axis=1), k=2, axes=(1,2)),
+            lambda x: np.rot90(np.flip(x, axis=1), k=3, axes=(1,2)),
+        ]
+        inv_translations = [
+            lambda x: x,
+            lambda x: np.rot90(x, k=-1, axes=(1,2)),
+            lambda x: np.rot90(x, k=-2, axes=(1,2)),
+            lambda x: np.rot90(x, k=-3, axes=(1,2)),
+            lambda x: np.flip(x, axis=1),
+            lambda x: np.flip(np.rot90(x, k=-1, axes=(1,2)), axis=1),
+            lambda x: np.flip(np.rot90(x, k=-2, axes=(1,2)), axis=1),
+            lambda x: np.flip(np.rot90(x, k=-3, axes=(1,2)), axis=1),
+        ]
+        def val_policy_fn(gostates):
+            x = np.concatenate(
+                [single_go_to_x(gostate.go) for gostate in gostates],
+                axis=0
+            )
+            idx = random.choice(range(len(translations)))
+            x_trans = translations[idx](x)
+            val, pi_trans = self.model.predict(x_trans)
+            pi_moves_trans = pi_trans[:,:-1].reshape(-1,9,9,1)
+            pi_moves = inv_translations[idx](pi_moves_trans)
+            pi = np.append(pi_moves.reshape(pi_trans[:,:-1].shape), pi_trans[:,-1:], axis=1)
+            return val, pi
         self.mcts = MCTS(
-            exploration_constant = 0.1,
-            policy_fn = policy_fn,
-            value_fn  = value_fn,
+            c_puct = 0.1,
+            val_policy_fn = val_policy_fn,
             time_limit = time_limit,
         )
+    def black_win_prob(self, go):
+        val, pi = self.mcts.val_policy_fn([MCTS_Player.GoState(go)])
+        return val[0]
     def get_move(self, go):
         state = MCTS_Player.GoState(go)
         return state.action_to_gomove(self.mcts.get_action(state))

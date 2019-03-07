@@ -3,7 +3,6 @@
 import numpy as np
 import requests
 import websocket
-import threading
 import json
 import time
 import logging
@@ -11,6 +10,8 @@ import traceback
 import yaml
 import uuid
 import threading
+import multiprocessing
+import random
 
 from go import Go
 from players import Player, MCTS_Player, PolicyNetworkArgmax
@@ -205,7 +206,23 @@ class OnlineGoAPI:
         )
 
     def _game_chat(self, game_id, message):
-        pass # TODO
+        self.logger.info('_game_chat %s %s' % (game_id, message))
+        self._ws_send(
+            'game/chat',
+            {  
+                'auth': self.config['chat_auth'],
+                'game_id': game_id,
+                'player_id': str(self.config['user']['id']),
+                'body': message,
+                'type': "discussion",
+                'move_number': len(self.gamedata[game_id]['moves']),
+                'username': self.username,
+                'is_player': True,
+                'ranking': self.gamedata[game_id]['players']['black']['rank'] if int(self.gamedata[game_id]['black_player_id']) == int(self.config['user']['id']) else self.gamedata[game_id]['players']['white']['rank'],
+                'ui_class': "",
+            }
+        )
+
     def _game_connect(self, game_id):
         self.logger.info('_game_connect %s' % game_id)
         self._ws_send('game/connect', {'player_id': str(self.config['user']['id']), 'game_id': str(game_id), 'chat': True})
@@ -237,7 +254,7 @@ class OnlineGoAPI:
                 'player_id': str(self.config['user']['id']),
             }
         )
-    def _removed_stones_accept(self, game_id):
+    def _removed_stones_accept(self, game_id, stones):
         self.logger.info('_removed_stones_accept %s' % game_id)
         self._ws_send(
             ' game/removed_stones/accept',
@@ -245,7 +262,7 @@ class OnlineGoAPI:
                 'auth': self.config['chat_auth'],
                 'game_id': str(game_id),
                 'player_id': str(self.config['user']['id']),
-                'stones': self.gamedata[game_id]['removed'],
+                'stones': stones,
                 'strict_seki_mode': self.gamedata[game_id]['strict_seki_mode'],
             }
         )
@@ -284,24 +301,22 @@ class OnlineGoAPI:
                 self.gamedata[game_id]['clock'] = data
             elif game_endpoint == 'phase':
                 self.gamedata[game_id]['phase'] = data
-                if data == 'stone removal':
-                    self._game_chat(game_id, "I dunno how to do this bit")
-                elif data == 'play':
+                if data == 'play':
                     del self.gamedata[game_id]
                     self._game_disconnect(game_id)
                     self._game_connect(game_id)
             elif game_endpoint == 'move':
                 self.gamedata[game_id]['moves'].append(data['move'])
             elif game_endpoint == 'removed_stones':
-                # TODO
-                self.logger.debug('removed_stones %s' % game_id)
-                self.logger.debug(str(data))
                 pass
+            elif game_endpoint == 'removed_stones_accepted':
+                if int(data['player_id']) != int(self.config['user']['id']):
+                    time.sleep(1)
+                    self._removed_stones_accept(game_id, data['stones'])
             elif game_endpoint == 'reset':
                 self.logger.warning('game/reset %s' % game_id)
                 del self.gamedata[game_id]
                 self._game_connect(game_id)
-
 
     def _ws_on_open(self):
         self.ws_log.info(' O  on_open')
@@ -314,7 +329,7 @@ class OnlineGoAPI:
         msg = json.loads(message[2:])
         self._process_message(msg)
     def _ws_send(self, endpoint, message):
-        msg = '42'+json.dumps([endpoint, message]).replace(' ','')
+        msg = '42'+json.dumps([endpoint, message], separators=(',',':'))
         self.ws_log.info(' >  %s' % msg)
         self.ws.send(msg)
 
@@ -333,21 +348,57 @@ class OnlineGoAPI:
         return res
 
 def run(game_id, ogs_api, player, logger):
+    def _start_msg():
+        msgs = [
+            'glhf!',
+            'hey :)',
+            'good luck!',
+            'have fun',
+            'hi!',
+            'hello',
+            'hi! glhf',
+        ]
+        return random.choice(msgs)
+    def _end_msg():
+        msgs = [
+            'gg',
+            'good game',
+            'gg thanks',
+            'thx',
+        ]
+        return random.choice(msgs)
+    def _losing_msg():
+        msgs = [
+            'ow',
+            'oops',
+            ':(',
+        ]
+        return random.choice(msgs)
+    def _winning_msg():
+        msgs = [
+            'ye',
+            ':)',
+            'hehe',
+        ]
+        return random.choice(msgs)
     def gamedata():
         return ogs_api.gamedata[game_id]
+    def _move_count():
+        return len(gamedata()['moves'])
+    def _playing_black():
+        return int(gamedata()['clock']['black_player_id']) == int(ogs_api.config['user']['id'])
     def _game_over():
         return gamedata()['phase'] == 'finished'
     def _my_turn():
         return gamedata()['phase'] == 'play' and \
-            gamedata()['clock']['current_player'] == ogs_api.config['user']['id']
+            int(gamedata()['clock']['current_player']) == int(ogs_api.config['user']['id'])
     def _time_left():
-        clock           = gamedata()['clock']
-        time_left       = clock['black_time'] if clock['black_player_id'] == ogs_api.config['user']['id'] else clock['white_time']
+        time_left       = gamedata()['clock']['black_time'] if _playing_black() else gamedata()['clock']['white_time']
         total_time      = time_left['thinking_time']
         try: total_time += time_left['periods'] * time_left['period_time']
         except: pass
         if _my_turn():
-            time_elapsed = (time.time() - clock['last_move'] / 1000)
+            time_elapsed = (time.time() - gamedata()['clock']['last_move'] / 1000)
             total_time  -= time_elapsed
         return total_time
     def _get_move_time():
@@ -370,15 +421,29 @@ def run(game_id, ogs_api, player, logger):
             logger.warning('%s : %s' % (game_id, traceback.format_exc()))
             move = Go.PASS
         return move
+    def _win_prob(go):
+        black_win_prob = player.black_win_prob(go)
+        return black_win_prob if _playing_black() else 1-black_win_prob
     def _do_turn():
         logger.info('%s : _do_turn' % game_id)
         go   = _get_go()
-        mt   = _get_move_time()
-        move = _get_move(go, mt)
-        logger.info('%s : move %s' % (game_id, move))
-        ogs_api._game_move(game_id, move)
-        logger.info('%s : move submitted' % (game_id))
+        win_prob = _win_prob(go)
+        win_probs.append(win_prob)
+        logger.info('%s : win_prob=%.2f' % (game_id, win_prob))
+        if len(win_probs) > 3 and all([wp < 0.05 for wp in win_probs[-3:]]):
+            logger.info('%s : resign' % (game_id))
+            ogs_api._game_resign(game_id)
+        else:
+            mt   = _get_move_time()
+            move = _get_move(go, mt)
+            logger.info('%s : move %s' % (game_id, move))
+            ogs_api._game_move(game_id, move)
     logger.info('%s : start' % (game_id))
+    win_probs = []
+    sent_msgs = [0]
+    if _move_count() < 2:
+        ogs_api._game_chat(game_id, _start_msg())
+        sent_msgs.append(_move_count())
     while not _game_over():
         logger.info('%s : sleep' % (game_id))
         while not _my_turn() and not _game_over():
@@ -387,15 +452,25 @@ def run(game_id, ogs_api, player, logger):
         logger.info('%s : wake' % (game_id))
         if _game_over():
             logger.info('%s : game over' % (game_id))
+            ogs_api._game_chat(game_id, _end_msg())
+            sent_msgs.append(_move_count())
             return
         _do_turn()
         time.sleep(0.5)
+        if _move_count() - sent_msgs[-1] > 10 and len(win_probs) > 4:
+            delta_wp = win_probs[-1] - np.mean(win_probs[-5:-1])
+            if delta_wp > 0.4 and win_probs[-1] > 0.6:
+                ogs_api._game_chat(game_id, _winning_msg())
+                sent_msgs.append(_move_count())
+            if delta_wp < -0.4 and win_probs[-1] < 0.4:
+                ogs_api._game_chat(game_id, _losing_msg())
+                sent_msgs.append(_move_count())
 
 if __name__ == '__main__':
     logger  = make_logger('debug')
     model  = Gen_Model().load('Go', '0.1')
     def new_player():
-        return MCTS_Player(model, time_limit=30)
+        return MCTS_Player(model, time_limit=10)
     # Initialise TF session
     MCTS_Player(model, time_limit=1).get_move(Go())
     max_concurrent_games = 2
@@ -412,6 +487,7 @@ if __name__ == '__main__':
                 logger.info("start thread for %s" % game_id)
                 # run(game_id, ogs_api, new_player())
                 threading.Thread(target=run, args=(game_id, ogs_api, new_player(), logger)).start()
+                # multiprocessing.Process(target=run, args=(game_id, ogs_api, new_player(), logger)).start()
                 run_threads[game_id] = True
         if ogs_api.automatch is None and len(play_games) < max_concurrent_games:
             logger.info("FIND AUTOMATCH")

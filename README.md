@@ -8,6 +8,9 @@
 * `players.py` contains a series of players, which can take a `Go` class as 
 input and output a `Tuple[int,int]` move
 * `train.py` trains and saves a CNN (from `model.py`) on SGF files
+* `ogs_api.py` contains the OGS API module and a script to log into a 
+username/password from `config.yml` and play games using a saved `.h5` file
+(or some other model)
 
 ## TODO
 - [x] Go Game
@@ -16,7 +19,7 @@ input and output a `Tuple[int,int]` move
     - [x] Random Agent
     - [x] Webscrape SGF files
         - [x] Use proxy and multithreading
-    - [ ] Build AlphaZero style CNN
+    - [x] Build AlphaZero style CNN
         - https://github.com/AppliedDataSciencePartners/DeepReinforcementLearning
     - [x] Train policy and value heads
         - [x] Convert SGF files into network inputs / targets
@@ -33,8 +36,6 @@ input and output a `Tuple[int,int]` move
     - https://ogs.docs.apiary.io/
     - https://forums.online-go.com/t/ogs-api-notes/17136
     - [x] Create account for AI
-        - Pasbot
-        - https://online-go.com/user/view/619703
     - [x] Log on to API
     - [x] Place a move in a game
     - [x] Load a game into Go object
@@ -44,7 +45,12 @@ input and output a `Tuple[int,int]` move
         - [x] Pick up existing games on startup
         - [x] Pick up new games whilst running (bug?)
     - [x] Search for game when no games going on
-    - [ ] Multiprocessing for multiple games
+    - [x] Multiprocessing for multiple games
+    - [x] Stone removal phase
+    - [x] Resign based on win chance
+    - [x] Chat
+        - [x] Pre-programmed messages
+        - [ ] More complex chat-bot model
 - [ ] Optimisations
     - [x] Benchmark and optimise Go game
     - [ ] Train on AWS

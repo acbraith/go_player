@@ -1,14 +1,23 @@
 
+#%%
 import os
+import tarfile
+
+import codecs
+from tqdm import tqdm
 
 import numpy as np
+
+import h5py
+
 from go import Go
 
 import functools as ft
 
 import traceback
+import random
 
-from sgf_converter import play_sgf
+from sgf_converter import play_sgf, WR, BR
 
 from tensorflow.keras.utils import Sequence
 
@@ -50,73 +59,160 @@ def single_go_to_x(go):
         np.ones(shape=(1,9,9,1))*(go._turn == Go.BLACK),
     ], axis=3)
 
-class DataGenerator(Sequence):
-    def __init__(self, sgfs, batch_size):
-        self.sgfs       = sgfs
-        self.batch_size = batch_size
-        self.data       = self._prepare_data(sgfs)
-    def _prepare_data(self, sgfs):
-        def process_sgf(sgf):
-            game = play_sgf(sgf)
-            def full_go_to_x(go):
-                if go._prev is not None:
-                    return np.concatenate(
-                        [full_go_to_x(go._prev), single_go_to_x(go)],
-                        axis=0
-                    )
-                return single_go_to_x(go)
-            def full_go_to_y_policy(go):
-                reversed_moves = [Go.PASS]
-                while go._prev is not None:
-                    reversed_moves.append(go._last_move)
-                    go = go._prev
-                ys = np.zeros(shape=(len(reversed_moves),go._size*go._size+1))
-                for i,move in enumerate(reversed(reversed_moves)):
-                    if move != Go.PASS:
-                        idx = np.ravel_multi_index(move, (9,9))
-                        ys[i][idx] = 1
-                    else:
-                        ys[i][-1] = 1
-                return ys
-            go = game['board']
-            winner = game['RE']
-            x = full_go_to_x(go)
-            y_value = np.full(
-                shape=(len(x),1), 
-                fill_value=1 if winner[0] == 'B' else 0
-            )
-            y_policy = full_go_to_y_policy(go)
-            return x,y_value,y_policy
-        return Parallel(n_jobs=4)(
-            delayed(process_sgf)(sgf) for sgf in tqdm(sgfs, ncols=80)
+def get_x(go):
+    if go._prev is not None:
+        return np.concatenate(
+            [get_x(go._prev), single_go_to_x(go)],
+            axis=0
         )
-    def __len__(self):
-        return int(np.ceil(len(self.sgfs) / float(self.batch_size)))
-    #@ft.lru_cache(maxsize=None)
-    def __getitem__(self, idx):
-        batch_data  = self.data[idx * self.batch_size:(idx + 1) * self.batch_size]
-        xs, y_values, y_policies = [], [], []
-        for x,y,yy in batch_data:
-            idx = np.random.randint(0, len(x))
-            xs.append(x[idx])
-            y_values.append(y[idx])
-            y_policies.append(yy[idx])
-        return np.stack(xs, axis=0), {'value_head': np.stack(y_values, axis=0), 'policy_head': np.stack(y_policies, axis=0)}
+    return single_go_to_x(go)
+
+def get_y_policy(go):
+    reversed_moves = [Go.PASS]
+    while go._prev is not None:
+        reversed_moves.append(go._last_move)
+        go = go._prev
+    y_policy = np.zeros(shape=(len(reversed_moves),go._size*go._size+1))
+    for i,move in enumerate(reversed(reversed_moves)):
+        if move != Go.PASS:
+            idx = np.ravel_multi_index(move, (go._size, go._size))
+            y_policy[i][idx] = 1
+        else:
+            y_policy[i][-1] = 1
+    return y_policy
+
+def get_y_value(winner, n):
+    y_value = np.full(
+        shape=(n,1), 
+        fill_value=1 if winner[0] == 'B' else 0
+    )
+    return y_value
+
+def process_sgf(sgf):
+    game = play_sgf(sgf)
+    go = game['board']
+    winner = game['RE']
+    x           = get_x(go)
+    y_policy    = get_y_policy(go)
+    y_value     = get_y_value(winner, len(x))
+    return x, y_policy, y_value
+
+def get_sgfs():
+    datasets = os.listdir('data/aya')
+    for d in sorted(datasets, reverse=True): # most recent first
+        with tarfile.open('data/aya/%s' % d, 'r:bz2') as tar:
+            for member in tar.getmembers():
+                if member.isfile():
+                    f = tar.extractfile(member)
+                    content = f.read()
+                    yield content.decode('utf-8')
+
+def len_sgfs():
+    # 187316 for 9x9_2015_11 -> 9x9_2018_12
+    datasets = os.listdir('data/aya')
+    total_len = 0
+    for d in datasets:
+        with tarfile.open('data/aya/%s' % d, 'r:bz2') as tar:
+            total_len +=  len([m for m in tar.getmembers() if m.isfile()])
+    return total_len
 
 if __name__ == '__main__':
+    # n_games = len_sgfs()
+    mem_size = 100000
+
     # SUPERVISED LEARNING
+    sgfs = get_sgfs()
+    demo_sgf = sgfs.__next__()
+    x, y_policy, y_value = process_sgf(demo_sgf)
+
+    try:
+        x_memory = np.memmap(
+            filename = 'memory/x.dat',
+            dtype = np.uint8, mode='r+',
+            shape=(mem_size,)+x.shape[1:]
+        )
+    except FileNotFoundError:
+        x_memory = np.memmap(
+            filename = 'memory/x.dat',
+            dtype = np.uint8, mode='w+',
+            shape=(mem_size,)+x.shape[1:]
+        )
+        del x_memory
+        x_memory = np.memmap(
+            filename = 'memory/x.dat',
+            dtype = np.uint8, mode='r+',
+            shape=(mem_size,)+x.shape[1:]
+        )
+    try:
+        y_value_memory = np.memmap(
+            filename = 'memory/y_value.dat',
+            dtype = np.uint8, mode='r+',
+            shape=(mem_size,)+y_value.shape[1:]
+        )
+    except FileNotFoundError:
+        y_value_memory = np.memmap(
+            filename = 'memory/y_value.dat',
+            dtype = np.uint8, mode='w+',
+            shape=(mem_size,)+y_value.shape[1:]
+        )
+        del y_value_memory
+        y_value_memory = np.memmap(
+            filename = 'memory/y_value.dat',
+            dtype = np.uint8, mode='r+',
+            shape=(mem_size,)+y_value.shape[1:]
+        )
+    try:
+        y_policy_memory = np.memmap(
+            filename = 'memory/y_policy.dat',
+            dtype = np.uint8, mode='r+',
+            shape=(mem_size,)+y_policy.shape[1:]
+        )
+    except FileNotFoundError:
+        y_policy_memory = np.memmap(
+            filename = 'memory/y_policy.dat',
+            dtype = np.uint8, mode='w+',
+            shape=(mem_size,)+y_policy.shape[1:]
+        )
+        del y_policy_memory
+        y_policy_memory = np.memmap(
+            filename = 'memory/y_policy.dat',
+            dtype = np.uint8, mode='r+',
+            shape=(mem_size,)+y_policy.shape[1:]
+        )
 
     # Load Data
-    import codecs
-    from tqdm import tqdm
-    sgfs = []
-    path = 'sgfs/sdk_9x9/'
-    n_games = len(os.listdir(path))
-    for game_id in tqdm(os.listdir(path)[:n_games], ncols=80):
-        sgfs.append(codecs.open('sgfs/sdk_9x9/%s' % game_id, 'r', 'utf-8').read())
-
-    # Sequence Generator for Training
-    data_generator = DataGenerator(sgfs, batch_size = 128)
+    def to_int(s):
+        return int(''.join(c for c in s if c.isdigit()))
+    ratings     = []
+    print("Loading data into memory...")
+    idx_start   = 0
+    n_games     = 0
+    tot_games   = 0
+    with tqdm(
+        total=mem_size, ncols=120,
+        postfix=['games', dict(value=0)]
+    ) as pbar:
+        for i,sgf in enumerate(sgfs):
+            if idx_start >= mem_size: break
+            # Ignore games not in top 10% of ratings
+            wr,br = to_int(WR(sgf)), to_int(BR(sgf))
+            ratings += [wr,br]
+            if len(ratings) < 100 or min(wr,br) < np.percentile(ratings[-1000:], 90):
+                continue
+            x, y_policy, y_value = process_sgf(sgf)
+            idx_end = idx_start + len(x)
+            if idx_end > mem_size:
+                x        = x[:mem_size - idx_end]
+                y_policy = y_policy[:mem_size - idx_end]
+                y_value  = y_value[:mem_size - idx_end]
+                idx_end = mem_size
+            x_memory[idx_start:idx_end]         = x
+            y_policy_memory[idx_start:idx_end]  = y_policy
+            y_value_memory[idx_start:idx_end]   = y_value
+            idx_start   += len(x)
+            n_games     += 1
+            pbar.update(len(x))
+            pbar.set_postfix(game=n_games, tot_games=i+1)
 
     # Build Model
     model = Residual_CNN(
@@ -133,12 +229,16 @@ if __name__ == '__main__':
     model.model.compile(
         loss={'value_head': 'binary_crossentropy', 'policy_head': 'categorical_crossentropy'},#softmax_cross_entropy_with_logits},
         optimizer='adam',
-        loss_weights={'value_head': 0.5, 'policy_head': 0.5},
+        loss_weights={'value_head': 0.2, 'policy_head': 0.8},
         metrics={'value_head': 'accuracy', 'policy_head': 'accuracy'},
-    )
-    model.model.fit_generator(
-        generator = data_generator,
-        epochs = 100, verbose = 1,
+    ) # states, targets, epochs, verbose, validation_split, batch_size
+    model.model.fit(
+        x_memory[:idx_end], 
+        {
+            'value_head'    : y_value_memory[:idx_end], 
+            'policy_head'   : y_policy_memory[:idx_end],
+        },
+        epochs=1, verbose=1, batch_size=64, shuffle=True,
     )
 
     # Save Model

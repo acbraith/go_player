@@ -200,8 +200,8 @@ if __name__ == '__main__':
     criteria = lambda sgf: \
         RE(sgf)[0] in {'B','W'} and \
         SZ(sgf) == '9' and \
-        rank_to_int(BR(sgf)) >= rank_to_int('9k') and \
-        rank_to_int(WR(sgf)) >= rank_to_int('9k') and \
+        rank_to_int(BR(sgf)) >= rank_to_int('1d') and \
+        rank_to_int(WR(sgf)) >= rank_to_int('1d') and \
         HA(sgf) in {'0','?'}
-    download_sgfs(name='sdk_9x9', criteria=criteria, n=1000000)
+    download_sgfs(name='dan_9x9', criteria=criteria, n=10000000)
     #save_user_sgfs(user_id = 594193) # abraith93
