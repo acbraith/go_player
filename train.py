@@ -1,28 +1,19 @@
 
-#%%
-import os
-import tarfile
-
 import codecs
-from tqdm import tqdm
-
-import numpy as np
-
-import h5py
-
-from go import Go
-
-import functools as ft
-
+import os
 import traceback
 import random
+import tarfile
+import h5py
+import numpy as np
+import functools as ft
 
-from process_sgf import play_sgf, WR, BR
-
+from tqdm import tqdm
 from tensorflow.keras.utils import Sequence
-
 from joblib import Parallel, delayed
 
+from go import Go
+from process_sgf import play_sgf, WR, BR
 from model import Residual_CNN
 
 def single_go_to_x(go):
@@ -128,9 +119,9 @@ if __name__ == '__main__':
     memory = h5py.File('data/memory.h5', 'w')
     memory.close()
     memory = h5py.File('data/memory.h5', 'r+')
-    memory['x']         = np.zeros(shape=(mem_size,)+x.shape[1:])
-    memory['y_value']   = np.zeros(shape=(mem_size,)+y_value.shape[1:])
-    memory['y_policy']  = np.zeros(shape=(mem_size,)+y_policy.shape[1:])
+    memory_x            = memory.create_dataset('x',        shape=(mem_size,)+x.shape[1:],          dtype=np.uint8, chunks=(64,)+x.shape[1:]       )
+    memory_y_value      = memory.create_dataset('y_value',  shape=(mem_size,)+y_value.shape[1:],    dtype=np.uint8, chunks=(64,)+y_value.shape[1:] )
+    memory_y_policy     = memory.create_dataset('y_policy', shape=(mem_size,)+y_policy.shape[1:],   dtype=np.uint8, chunks=(64,)+y_policy.shape[1:])
 
     # Load Data
     def to_int(s):
@@ -145,21 +136,23 @@ if __name__ == '__main__':
     ) as pbar:
         for i,sgf in enumerate(sgfs):
             if idx_start >= mem_size: break
+
             # Ignore games not in top x% of ratings
             wr,br = to_int(WR(sgf)), to_int(BR(sgf))
             ratings += [min(wr,br)]
             if len(ratings) < 100 or min(wr,br) < np.percentile(ratings[-500:], 90):
                 continue
+
             x, y_policy, y_value = process_sgf(sgf)
-            idx_end = idx_start + len(x)
-            if idx_end > mem_size: # overflow beyond end of memory
-                x        = x[:mem_size - idx_end]
-                y_policy = y_policy[:mem_size - idx_end]
-                y_value  = y_value[:mem_size - idx_end]
-                idx_end = mem_size
-            memory['x'][idx_start:idx_end]          = x
-            memory['y_policy'][idx_start:idx_end]   = y_policy
-            memory['y_value'][idx_start:idx_end]    = y_value
+
+            memory_x.resize(idx_start+len(x), axis=0)
+            memory_y_value.resize(idx_start+len(x), axis=0)
+            memory_y_policy.resize(idx_start+len(x), axis=0)
+
+            memory_x[-len(x):]          = x
+            memory_y_value[-len(x):]    = y_value
+            memory_y_policy[-len(x):]   = y_policy
+
             idx_start   += len(x)
             n_games     += 1
             pbar.update(len(x))
