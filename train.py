@@ -144,14 +144,15 @@ if __name__ == '__main__':
                 continue
 
             x, y_policy, y_value = process_sgf(sgf)
-
-            memory_x.resize(idx_start+len(x), axis=0)
-            memory_y_value.resize(idx_start+len(x), axis=0)
-            memory_y_policy.resize(idx_start+len(x), axis=0)
-
-            memory_x[-len(x):]          = x
-            memory_y_value[-len(x):]    = y_value
-            memory_y_policy[-len(x):]   = y_policy
+            idx_end = idx_start + len(x)
+            if idx_end > mem_size:
+                x        = x[:mem_size - idx_end]
+                y_policy = y_policy[:mem_size - idx_end]
+                y_value  = y_value[:mem_size - idx_end]
+                idx_end = mem_size
+            memory_x[idx_start:idx_end]         = x
+            memory_y_value[idx_start:idx_end]   = y_value
+            memory_y_policy[idx_start:idx_end]  = y_policy
 
             idx_start   += len(x)
             n_games     += 1
