@@ -2,15 +2,13 @@
 
 ## Overview
 
-* `go.py` contains a `Go` class, which can play games of Go.
-* `ogs_webscraper.py` downloads `.sgf` files from OGS.
-* `sgf_converter.py` converts these files into game histories and winners.
-* `players.py` contains a series of players, which can take a `Go` class as 
-input and output a `Tuple[int,int]` move
-* `train.py` trains and saves a CNN (from `model.py`) on SGF files
-* `ogs_api.py` contains the OGS API module and a script to log into a 
-username/password from `config.yml` and play games using a saved `.h5` file
-(or some other model)
+- `go.py` contains a `Go` class, which can play games of Go
+- `players.py`, `mcts.py` and `model.py` are the files for creating Go playing
+agents
+- `download_*.py` downloads SGF files
+- `train.py` trains and saves a CNN (from `model.py`) on SGF files
+- `play.py` logs on to an OGS account using details in `config.yml`, and plays 
+games using the model saved by `train.py`
 
 ## TODO
 - [x] Go Game
@@ -54,6 +52,6 @@ username/password from `config.yml` and play games using a saved `.h5` file
 - [ ] Optimisations
     - [x] Benchmark and optimise Go game
     - [ ] Train on AWS
-    - [ ] Download more data and train from only dan level games
-    - [ ] Optimise train data selection
+    - [x] Download more data and train from only dan level games
+    - [x] Optimise train data selection
         - https://stackoverflow.com/questions/15993447/python-data-structure-for-efficient-add-remove-and-random-choice

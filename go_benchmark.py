@@ -1,4 +1,4 @@
-from sgf_converter import play_sgf
+from process_sgf import play_sgf
 
 import cProfile
 import os

@@ -17,7 +17,7 @@ import functools as ft
 import traceback
 import random
 
-from sgf_converter import play_sgf, WR, BR
+from process_sgf import play_sgf, WR, BR
 
 from tensorflow.keras.utils import Sequence
 
@@ -118,67 +118,19 @@ def len_sgfs():
 
 if __name__ == '__main__':
     # n_games = len_sgfs()
-    mem_size = 100000
+    mem_size = 500000
 
     # SUPERVISED LEARNING
     sgfs = get_sgfs()
     demo_sgf = sgfs.__next__()
     x, y_policy, y_value = process_sgf(demo_sgf)
 
-    try:
-        x_memory = np.memmap(
-            filename = 'memory/x.dat',
-            dtype = np.uint8, mode='r+',
-            shape=(mem_size,)+x.shape[1:]
-        )
-    except FileNotFoundError:
-        x_memory = np.memmap(
-            filename = 'memory/x.dat',
-            dtype = np.uint8, mode='w+',
-            shape=(mem_size,)+x.shape[1:]
-        )
-        del x_memory
-        x_memory = np.memmap(
-            filename = 'memory/x.dat',
-            dtype = np.uint8, mode='r+',
-            shape=(mem_size,)+x.shape[1:]
-        )
-    try:
-        y_value_memory = np.memmap(
-            filename = 'memory/y_value.dat',
-            dtype = np.uint8, mode='r+',
-            shape=(mem_size,)+y_value.shape[1:]
-        )
-    except FileNotFoundError:
-        y_value_memory = np.memmap(
-            filename = 'memory/y_value.dat',
-            dtype = np.uint8, mode='w+',
-            shape=(mem_size,)+y_value.shape[1:]
-        )
-        del y_value_memory
-        y_value_memory = np.memmap(
-            filename = 'memory/y_value.dat',
-            dtype = np.uint8, mode='r+',
-            shape=(mem_size,)+y_value.shape[1:]
-        )
-    try:
-        y_policy_memory = np.memmap(
-            filename = 'memory/y_policy.dat',
-            dtype = np.uint8, mode='r+',
-            shape=(mem_size,)+y_policy.shape[1:]
-        )
-    except FileNotFoundError:
-        y_policy_memory = np.memmap(
-            filename = 'memory/y_policy.dat',
-            dtype = np.uint8, mode='w+',
-            shape=(mem_size,)+y_policy.shape[1:]
-        )
-        del y_policy_memory
-        y_policy_memory = np.memmap(
-            filename = 'memory/y_policy.dat',
-            dtype = np.uint8, mode='r+',
-            shape=(mem_size,)+y_policy.shape[1:]
-        )
+    memory = h5py.File('data/memory.h5', 'w')
+    memory.close()
+    memory = h5py.File('data/memory.h5', 'r+')
+    memory['x']         = np.zeros(shape=(mem_size,)+x.shape[1:])
+    memory['y_value']   = np.zeros(shape=(mem_size,)+y_value.shape[1:])
+    memory['y_policy']  = np.zeros(shape=(mem_size,)+y_policy.shape[1:])
 
     # Load Data
     def to_int(s):
@@ -190,25 +142,24 @@ if __name__ == '__main__':
     tot_games   = 0
     with tqdm(
         total=mem_size, ncols=120,
-        postfix=['games', dict(value=0)]
     ) as pbar:
         for i,sgf in enumerate(sgfs):
             if idx_start >= mem_size: break
-            # Ignore games not in top 10% of ratings
+            # Ignore games not in top x% of ratings
             wr,br = to_int(WR(sgf)), to_int(BR(sgf))
-            ratings += [wr,br]
-            if len(ratings) < 100 or min(wr,br) < np.percentile(ratings[-1000:], 90):
+            ratings += [min(wr,br)]
+            if len(ratings) < 100 or min(wr,br) < np.percentile(ratings[-500:], 90):
                 continue
             x, y_policy, y_value = process_sgf(sgf)
             idx_end = idx_start + len(x)
-            if idx_end > mem_size:
+            if idx_end > mem_size: # overflow beyond end of memory
                 x        = x[:mem_size - idx_end]
                 y_policy = y_policy[:mem_size - idx_end]
                 y_value  = y_value[:mem_size - idx_end]
                 idx_end = mem_size
-            x_memory[idx_start:idx_end]         = x
-            y_policy_memory[idx_start:idx_end]  = y_policy
-            y_value_memory[idx_start:idx_end]   = y_value
+            memory['x'][idx_start:idx_end]          = x
+            memory['y_policy'][idx_start:idx_end]   = y_policy
+            memory['y_value'][idx_start:idx_end]    = y_value
             idx_start   += len(x)
             n_games     += 1
             pbar.update(len(x))
@@ -233,12 +184,12 @@ if __name__ == '__main__':
         metrics={'value_head': 'accuracy', 'policy_head': 'accuracy'},
     ) # states, targets, epochs, verbose, validation_split, batch_size
     model.model.fit(
-        x_memory[:idx_end], 
+        memory['x'],#[:idx_end], 
         {
-            'value_head'    : y_value_memory[:idx_end], 
-            'policy_head'   : y_policy_memory[:idx_end],
+            'value_head'    : memory['y_value'],#[:idx_end], 
+            'policy_head'   : memory['y_policy'],#[:idx_end],
         },
-        epochs=1, verbose=1, batch_size=64, shuffle=True,
+        epochs=1, verbose=1, batch_size=64, shuffle='batch',
     )
 
     # Save Model

@@ -1,9 +1,7 @@
 .vscode/*
 __pycache__/*
 models/*
-sgfs/*
-log/*
-config.yml
-Proxy*
 data/*
-memory/*
+log/*
+Proxy*
+config.yml
