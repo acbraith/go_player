@@ -203,10 +203,10 @@ from model import Gen_Model
 if __name__ == '__main__':
     from players import MCTS_Player, PolicyNetworkArgmax, ValueFunctionGreedy, MonteCarlo, MaxScoreDiff
     model = Gen_Model().load('Go', '0.1')
-    policy_network_agent = PolicyNetworkArgmax('AI', model)
-    value_function_agent = ValueFunctionGreedy('AI', model)
-    mcts_agent5           = MCTS_Player(model, time_limit=5)
-    mcts_agent1           = MCTS_Player(model, time_limit=1)
-    mcts_agent1a           = MCTS_Player(model, time_limit=1)
+    policy_network_agent    = PolicyNetworkArgmax('AI', model)
+    value_function_agent    = ValueFunctionGreedy('AI', model)
+    mcts_agent5             = MCTS_Player(model, time_limit=5)
+    mcts_agent1             = MCTS_Player(model, time_limit=1)
+    mcts_agent1a            = MCTS_Player(model, time_limit=1)
     play_vs_ai(mcts_agent5)
     #play_ai_vs_ai(mcts_agent1, mcts_agent1a, pause=0.1)

@@ -248,8 +248,8 @@ class OnlineGoAPI:
             ' game/removed_stones/accept',
             {
                 'auth': self.config['chat_auth'],
-                'game_id': str(game_id),
-                'player_id': str(self.config['user']['id']),
+                'game_id': int(game_id),
+                'player_id': int(self.config['user']['id']),
                 'stones': stones,
                 'strict_seki_mode': self.gamedata[game_id]['strict_seki_mode'],
             }

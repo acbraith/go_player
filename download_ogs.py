@@ -41,6 +41,12 @@ def save_sgf(game_id: int) -> None:
     except:
         pass
 
+import tarfile
+def make_tarfile(output_filename, source_dir):
+    # make_tarfile('data/ogs.tar.gz', 'data/ogs')
+    with tarfile.open(output_filename, "w:gz") as tar:
+        tar.add(source_dir, arcname=os.path.sep)
+
 if __name__ == '__main__':
     end_game_id     = 16898710
     start_game_id   = end_game_id - 1*10**6
@@ -51,6 +57,6 @@ if __name__ == '__main__':
     game_ids    = [gid for gid in range(start_game_id, end_game_id+1) if gid not in downloaded]
     random.shuffle(game_ids)
 
-    Parallel(n_jobs=50, backend='threading')(
+    Parallel(n_jobs=100, backend='threading')(
         delayed(save_sgf)(game_id) for game_id in tqdm(game_ids, ncols=80)
     )

@@ -23,7 +23,7 @@ def sgf_moves(sgf: str) -> List[Tuple[int, Tuple[int,int]]]:
 
 def sgf_add_stones(sgf: str) -> Tuple[List[Tuple[int,int]]]:
     black = []
-    black_moves = re.search(r'\n\s?AB(\[.*\])\n' , sgf)
+    black_moves = re.search(r'\n\s*AB(\[.*\])\n' , sgf)
     if black_moves:
         locs = black_moves[1]
         for move in re.findall(r'\[(\w\w)\]', locs):
@@ -31,7 +31,7 @@ def sgf_add_stones(sgf: str) -> Tuple[List[Tuple[int,int]]]:
             i,j = ord(x) - ord('a'), ord(y) - ord('a')
             black += [(i,j)]
     white = []
-    white_moves = re.search(r'\n\s?AW(\[.*\])\n' , sgf)
+    white_moves = re.search(r'\n\s*AW(\[.*\])\n' , sgf)
     if white_moves:
         locs = white_moves[1]
         for move in re.findall(r'\[(\w\w)\]', locs):
@@ -84,6 +84,7 @@ def play_sgf(sgf: str) -> Optional[Dict]:
         raise Exception('Analysis Currently Unsupported')
     go = Go(board_size)
     black,white = sgf_add_stones(sgf)
+    print(black, white)
     for loc in black: go._board[loc] = Go.BLACK
     for loc in white: go._board[loc] = Go.WHITE
     # print(go)

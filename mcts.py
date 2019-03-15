@@ -116,7 +116,21 @@ class MCTS:
         # Select Action
         action = max(self.root.children, key=lambda action: self.root.children[action].num_visits)
         if update_root:
-            try:    self.root = self.root.children[action]; #print("VALUE: %s" % (self.root.total_reward / self.root.num_visits))
+            try:    self.root = self.root.children[action]#; print("VALUE: %s" % (self.root.total_reward / self.root.num_visits))
             except: pass
         
         return action
+
+    def action_visits(self, state):
+        # Create New Tree
+        self.root = Node(state, None)
+        value, action_probs = self._evaluate([self.root])
+        self.root.action_probs = action_probs[0]
+        self._backpropagate(self.root, value[0])
+
+        # Run Simulation
+        self.run_simulation(self.iteration_limit, self.time_limit)
+
+        return {
+            action: self.root.children[action].num_visits for action in self.root.children
+        }
